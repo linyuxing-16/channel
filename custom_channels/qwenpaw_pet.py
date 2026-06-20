@@ -5,7 +5,7 @@
 
 对外暴露 WebSocket 服务器，供外部客户端与 AI 通信。
 客户端通过 ``Authorization: Bearer <token>`` 请求头进行鉴权，
-发送文本消息，并通过同一 WebSocket 连接接收 AI 回复。
+发送base64编码的多模态消息和文本消息，并通过同一 WebSocket 连接接收 AI 回复。
 同时支持流式模式（逐 token 推送）和非流式模式（一次性返回完整消息）。
 
 使用示例
@@ -42,8 +42,12 @@ import websockets.exceptions
 from websockets.server import WebSocketServer
 
 from agentscope_runtime.engine.schemas.agent_schemas import (
+    AudioContent,
     ContentType,
+    FileContent,
+    ImageContent,
     TextContent,
+    VideoContent,
 )
 
 from qwenpaw.app.channels.base import (
@@ -324,6 +328,116 @@ class QwenpawPetChannel(BaseChannel):
         streaming_val = headers.get("X-Streaming-Enabled", "0")
         return streaming_val.lower() in ("1", "true", "yes")
 
+    # ── 多模态内容解析 ─────────────────────────────────────────────
+
+    def _parse_content_parts(self, data: dict) -> Optional[List[Any]]:
+        """从消息数据中解析多模态内容，返回运行时内容对象列表。
+
+        支持两种格式：
+        1. content 为字符串 → 纯文本（向后兼容）
+        2. content 为对象列表 → 多模态消息
+        """
+        content = data.get("content", "") or data.get("text", "")
+
+        # 字符串 → 纯文本（向后兼容）
+        if isinstance(content, str):
+            if not content.strip():
+                return None
+            return [
+                TextContent(type=ContentType.TEXT, text=content.strip()),
+            ]
+
+        # 列表 → 多模态消息
+        if isinstance(content, list):
+            parts: List[Any] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                block_type = block.get("type", "text")
+
+                if block_type == "text":
+                    text = block.get("text", "") or block.get("content", "")
+                    if text.strip():
+                        parts.append(
+                            TextContent(
+                                type=ContentType.TEXT,
+                                text=text.strip(),
+                            ),
+                        )
+
+                elif block_type == "image":
+                    image_url = (
+                        block.get("image_url", "") or block.get("data", "")
+                    )
+                    if image_url:
+                        # base64 数据 → data URI
+                        if block.get("data") and not block.get("image_url"):
+                            fmt = block.get("format", "png")
+                            image_url = (
+                                f"data:image/{fmt};base64,"
+                                f"{block['data']}"
+                            )
+                        parts.append(
+                            ImageContent(
+                                type=ContentType.IMAGE,
+                                image_url=image_url,
+                            ),
+                        )
+
+                elif block_type == "file":
+                    file_data = block.get("data", "")
+                    filename = block.get("filename", "file")
+                    file_url = block.get("file_url", "")
+                    if file_data:
+                        parts.append(
+                            FileContent(
+                                type=ContentType.FILE,
+                                file_data=file_data,
+                                filename=filename,
+                            ),
+                        )
+                    elif file_url:
+                        parts.append(
+                            FileContent(
+                                type=ContentType.FILE,
+                                file_url=file_url,
+                                filename=filename,
+                            ),
+                        )
+
+                elif block_type == "audio":
+                    audio_data = block.get("data", "")
+                    if audio_data:
+                        parts.append(
+                            AudioContent(
+                                type=ContentType.AUDIO,
+                                data=audio_data,
+                                format=block.get("format", "wav"),
+                            ),
+                        )
+
+                elif block_type == "video":
+                    video_url = (
+                        block.get("video_url", "") or block.get("data", "")
+                    )
+                    if video_url:
+                        if block.get("data") and not block.get("video_url"):
+                            fmt = block.get("format", "mp4")
+                            video_url = (
+                                f"data:video/{fmt};base64,"
+                                f"{block['data']}"
+                            )
+                        parts.append(
+                            VideoContent(
+                                type=ContentType.VIDEO,
+                                video_url=video_url,
+                            ),
+                        )
+
+            return parts if parts else None
+
+        return None
+
     # ── 消息处理 ─────────────────────────────────────────────────────
 
     async def _handle_raw_message(
@@ -359,9 +473,9 @@ class QwenpawPetChannel(BaseChannel):
             })
             return
 
-        # 提取内容
-        content = data.get("content", "") or data.get("text", "")
-        if not content or not content.strip():
+        # 解析多模态内容
+        content_parts = self._parse_content_parts(data)
+        if content_parts is None:
             await self._send_json(websocket, {
                 "type": "error",
                 "text": "Empty message content",
@@ -379,9 +493,7 @@ class QwenpawPetChannel(BaseChannel):
             "channel_id": self.channel,
             "sender_id": client_id,
             "acl_sender_id": client_id,
-            "content_parts": [
-                TextContent(type=ContentType.TEXT, text=content.strip()),
-            ],
+            "content_parts": content_parts,
             "meta": {
                 "client_id": client_id,
                 "session_id": session_id,
