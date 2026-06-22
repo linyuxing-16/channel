@@ -73,7 +73,10 @@ class QwenpawPetClient:
         Raises:
             websockets.exceptions.WebSocketException: 连接失败时抛出。
         """
-        extra_headers = {"Authorization": f"Bearer {self._token}"}
+        extra_headers = {
+            "Authorization": f"Bearer {self._token}",
+            "X-Streaming-Enabled": "1",
+        }
         self._ws = await websockets.connect(
             self._url,
             extra_headers=extra_headers,
