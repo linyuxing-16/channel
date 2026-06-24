@@ -176,7 +176,11 @@ class PetWindow:
         # 窗口配置 — 透明、无边框、置顶
         self.root.overrideredirect(True)
         self.root.wm_attributes("-topmost", True)
-        self.root.wm_attributes("-transparentcolor", "white")
+        try:
+            self.root.wm_attributes("-transparentcolor", "white")
+        except tk.TclError:
+            # Linux 不支持 -transparentcolor，用 -alpha 替代
+            self.root.wm_attributes("-alpha", 0.95)
         self.root.configure(bg="white")
 
         # 设置初始位置
