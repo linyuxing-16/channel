@@ -30,6 +30,7 @@ _STATES = {
     "说话": "说话.png",
 }
 _DEFAULT_POSITION = (100, 100)
+_DRAG_THRESHOLD = 5  # 拖拽阈值（像素），超过此值视为拖拽而非点击
 
 
 # ── 对话框控制器 ─────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ class DialogController:
         self._window.geometry(f"+{x}+{y}")
 
         # 提示标签
-        label = tk.Label(self._window, text="请选择一个操作", font=("Arial", 12))
+        label = tk.Label(self._window, text="请选择一个操作")
         label.pack(pady=20)
 
         # 4 个按钮 — 仅触发对应的回调
@@ -164,6 +165,13 @@ class PetWindow:
         # 点击状态 (True → 已打开窗口, False → 未打开窗口)
         self._is_open: bool = False
 
+        # 拖拽状态
+        self._drag_start_x: int = 0
+        self._drag_start_y: int = 0
+        self._drag_start_win_x: int = 0
+        self._drag_start_win_y: int = 0
+        self._drag_active: bool = False
+
     # ── 公共方法 ─────────────────────────────────────────────────────
 
     def show_main_window(self) -> None:
@@ -196,8 +204,10 @@ class PetWindow:
         # 初始状态
         self.switch_image("沉默")
 
-        # 绑定点击事件（只绑定根窗口即可，子控件事件会冒泡到根窗口）
-        self.root.bind("<Button-1>", self._on_click)
+        # 绑定鼠标事件（拖拽 + 点击）
+        self.root.bind("<Button-1>", self._on_drag_start)
+        self.root.bind("<B1-Motion>", self._on_drag_motion)
+        self.root.bind("<ButtonRelease-1>", self._on_drag_end)
 
         # 进入主循环
         self.root.mainloop()
@@ -243,6 +253,34 @@ class PetWindow:
                 # 图片缺失时创建占位
                 placeholder = tk.PhotoImage(width=1, height=1)
                 self._images[state] = placeholder
+
+    def _on_drag_start(self, event) -> None:
+        """鼠标按下时记录起始位置。"""
+        self._drag_start_x = event.x_root
+        self._drag_start_y = event.y_root
+        self._drag_start_win_x = self.root.winfo_x()
+        self._drag_start_win_y = self.root.winfo_y()
+        self._drag_active = False
+
+    def _on_drag_motion(self, event) -> None:
+        """鼠标拖动时移动窗口。超过阈值后才实际移动，避免与点击混淆。"""
+        dx = event.x_root - self._drag_start_x
+        dy = event.y_root - self._drag_start_y
+
+        if not self._drag_active:
+            if abs(dx) > _DRAG_THRESHOLD or abs(dy) > _DRAG_THRESHOLD:
+                self._drag_active = True
+            else:
+                return
+
+        new_x = self._drag_start_win_x + dx
+        new_y = self._drag_start_win_y + dy
+        self.root.geometry(f"+{new_x}+{new_y}")
+
+    def _on_drag_end(self, event) -> None:
+        """鼠标释放时判断：未拖拽则视为点击，触发切换逻辑。"""
+        if not self._drag_active:
+            self._on_click(event)
 
     def _on_click(self, _event) -> None:
         """点击图片时的处理：交替调用控制器的打开/关闭窗口方法。"""
@@ -467,7 +505,6 @@ class ChatInputController:
         self._text = tk.Text(
             self._window,
             bg="white",
-            font=("Arial", 10),
             wrap="word",
             relief="flat",
             padx=10,
