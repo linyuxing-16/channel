@@ -196,8 +196,7 @@ class PetWindow:
         # 初始状态
         self.switch_image("沉默")
 
-        # 绑定点击事件
-        self._image_label.bind("<Button-1>", self._on_click)
+        # 绑定点击事件（只绑定根窗口即可，子控件事件会冒泡到根窗口）
         self.root.bind("<Button-1>", self._on_click)
 
         # 进入主循环

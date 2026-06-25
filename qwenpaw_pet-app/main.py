@@ -31,6 +31,9 @@ dialog_controller = windows.DialogController()
 pet_window = windows.PetWindow(dialog_controller)
 setting_controller = windows.SettingController()
 dialog_controller.set_on_setting(setting_controller.open_window)
+
+dialog_controller.set_on_exit(pet_window.close_window)
+
 # 定义一个异步发送函数，通过 client.send_message 实现消息发送
 async def send_message(text: str) -> None:
     """通过 WebSocket 客户端发送文本消息。"""
