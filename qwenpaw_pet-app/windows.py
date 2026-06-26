@@ -187,8 +187,8 @@ class PetWindow:
         try:
             self.root.wm_attributes("-transparentcolor", "white")
         except tk.TclError:
-            # Linux 不支持 -transparentcolor，用 -alpha 替代
-            self.root.wm_attributes("-alpha", 0.95)
+            # Linux 不支持 -transparentcolor
+            pass
         self.root.configure(bg="white")
 
         # 设置初始位置
