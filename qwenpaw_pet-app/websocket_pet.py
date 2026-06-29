@@ -79,7 +79,7 @@ class QwenpawPetClient:
         }
         self._ws = await websockets.connect(
             self._url,
-            extra_headers=extra_headers,
+            additional_headers=extra_headers,
         )
         self._connected = True
 

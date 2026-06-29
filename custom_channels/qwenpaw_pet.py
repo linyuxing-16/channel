@@ -239,14 +239,17 @@ class QwenpawPetChannel(BaseChannel):
 
     async def _handle_connection(self, websocket) -> None:
         """处理新的 WebSocket 连接 — 鉴权，然后消息循环。"""
+        # websockets v16: request headers 通过 websocket.request.headers 访问
+        req_headers = websocket.request.headers
+
         # ── 鉴权 ─────────────────────────────────────────────────────
-        token = self._extract_bearer_token(websocket)
+        token = self._extract_bearer_token(req_headers)
         if not token or token != self._token:
             await websocket.close(4001, "Unauthorized")
             return
 
         # ── 流式偏好 ─────────────────────────────────────────────────
-        streaming_enabled = self._detect_streaming_preference(websocket)
+        streaming_enabled = self._detect_streaming_preference(req_headers)
 
         # ── 注册连接 ─────────────────────────────────────────────────
         client_id = str(uuid.uuid4())
@@ -310,21 +313,19 @@ class QwenpawPetChannel(BaseChannel):
     # ── 鉴权辅助方法 ─────────────────────────────────────────────────
 
     @staticmethod
-    def _extract_bearer_token(websocket) -> str:
+    def _extract_bearer_token(headers) -> str:
         """从请求头中提取 ``Authorization: Bearer <token>``。"""
-        headers = websocket.request_headers
         auth = headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             return auth[len("Bearer "):]
         return ""
 
     @staticmethod
-    def _detect_streaming_preference(websocket) -> bool:
+    def _detect_streaming_preference(headers) -> bool:
         """检测客户端是否请求了流式模式。
 
         检查 ``X-Streaming-Enabled`` 请求头。
         """
-        headers = websocket.request_headers
         streaming_val = headers.get("X-Streaming-Enabled", "0")
         return streaming_val.lower() in ("1", "true", "yes")
 
