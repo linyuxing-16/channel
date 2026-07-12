@@ -6,8 +6,10 @@
 
 | 组件 | 路径 | 说明 |
 |------|------|------|
-| **WebSocket 服务端（渠道）** | `custom_channels/qwenpaw_pet.py` | 基于 `agentscope_runtime` 框架的 WebSocket 服务器，对外暴露 AI 通信接口 |
+| **WebSocket 服务端（渠道）⚠️ 废弃** | `custom_channels/qwenpaw_pet.py` | 基于 `agentscope_runtime` 框架，已废弃，改用 Hermes 插件 |
+| **Hermes 平台适配器 ✅ 推荐** | `.hermes/plugins/qwenpaw_pet/` | Hermes Agent 项目级插件，功能完全替代旧版通道 |
 | **桌面宠物客户端** | `qwenpaw_pet-app/` | 基于 tkinter 的桌面宠物应用，通过 WebSocket 连接服务端 |
+| **测试服务器** | `test_server.py` | 独立 WebSocket 回声测试服务器，不依赖框架 |
 
 ---
 
@@ -33,7 +35,7 @@ python main.py
 {
     "url": "ws://localhost:8765",
     "token": "",
-    "stream": true
+    "streaming": true
 }
 ```
 
@@ -46,12 +48,15 @@ main.py                          # 入口：组装各组件，启动事件循环
 ├── windows.py                   # tkinter UI 组件
 │   ├── PetWindow                # 透明无边框桌面宠物主窗口
 │   ├── DialogController         # 控制面板（4 个按钮）
-│   ├── SettingController        # 设置窗口（修改 url/token/stream）
+│   ├── SettingController        # 设置窗口（修改 url/token/streaming）
 │   └── ChatInputController      # 输入/显示对话框
 └── images/                      # 宠物状态图片（需自行添加）
     ├── 沉默.png
     ├── 思考.png
     └── 说话.png
+
+# 项目根目录
+test_server.py                   # 独立 WebSocket 回声测试服务器
 ```
 
 ### 状态流转
@@ -79,7 +84,12 @@ main.py                          # 入口：组装各组件，启动事件循环
 
 ---
 
-## WebSocket 服务端 (`custom_channels/qwenpaw_pet.py`)
+## WebSocket 服务端 (`custom_channels/qwenpaw_pet.py`) — ⚠️ 已废弃
+
+> **此版本基于 `agentscope_runtime` 框架，已被废弃。**
+> 请改用本项目的 [Hermes 项目级插件](.hermes/plugins/qwenpaw_pet/)，
+> 它作为 Hermes 插件运行，无需 `agentscope_runtime` 框架。
+> `qwenpaw_pet-app` 客户端协议完全兼容，无需任何修改。
 
 ### 环境变量配置
 
@@ -145,9 +155,84 @@ X-Streaming-Enabled: 1
 
 ---
 
+## 测试服务器 (`test_server.py`)
+
+项目根目录下的 `test_server.py` 是一个**完全独立**的 WebSocket 回声测试服务器，不依赖 `agentscope_runtime` 框架，用于单独测试桌面客户端。
+
+```bash
+# 默认 0.0.0.0:8765，无鉴权
+python test_server.py
+
+# 自定义端口和 Bearer 鉴权
+python test_server.py --port 8888 --token my-secret
+```
+
+关键类 `QwenpawPetTestServer`：
+- `run()` — 启动服务器（`asyncio.Future()` 阻塞直到被取消）
+- `_handle_connection()` — 鉴权 → 握手 → 消息循环
+- `_send_streaming_reply()` — 逐字符模拟流式（20ms 间隔）
+
+**重要**：该文件与 `custom_channels/qwenpaw_pet.py` 使用相同的 WebSocket 协议，但完全是独立的实现。
+
+---
+
+## 依赖管理
+
+项目当前**没有** `requirements.txt` 或 `pyproject.toml`。手动安装依赖：
+
+```bash
+pip install websockets Pillow
+```
+
+| 依赖 | 用途 |
+|------|------|
+| `websockets` | WebSocket 客户端 (`qwenpaw_pet-app`) 和服务端 (`test_server.py`) |
+| `Pillow` | 桌面宠物状态图片加载 (`qwenpaw_pet-app`) |
+
+---
+
+## 项目配置
+
+### `.gitignore`
+
+```gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.egg/
+.venv/
+```
+
+### `config.json` 字段
+
+文件位置：`qwenpaw_pet-app/config.json`
+
+```json
+{
+    "url": "ws://localhost:8765",
+    "token": "",
+    "streaming": true
+}
+```
+
+**⚠️ 已知陷阱：字段名不统一**
+- `config.json` 使用键 `"streaming"`
+- `config.py` 读取时使用 `_config.get("stream", True)` — **读取的是 `"stream"`，不是 `"streaming"`**
+- `SettingController._save_config()` 写入的是 `"streaming"`
+- **后果**：通过设置界面修改后保存的值，`config.py` 读取不到（始终返回默认值 `True`）
+- **修复建议**：将 `config.py` 中的 `"stream"` 改为 `"streaming"`，或将 `SettingController` 中的写入键统一
+
+---
+
 ## 常见陷阱
 
 1. **`images/` 目录为空** — 需要放入 `沉默.png`、`思考.png`、`说话.png` 三张图片，否则会用 1x1 占位图
-2. **config.json 的 `stream` 字段** — 在 `config.py` 中读取为 `stream`，在 `SettingController` 中写为 `streaming`（注意字段名差异）
+2. **`config.json` 字段名不统一** — `config.py` 读 `"stream"`，`SettingController` 写 `"streaming"`（见上文）
 3. **事件循环** — `main.py` 使用独立事件循环在守护线程中运行，tkinter 主循环在主线程阻塞
 4. **线程安全** — UI 更新需通过 `root.after(0, ...)` 调度到主线程执行
+5. **缺少依赖管理文件** — 无 `requirements.txt`，依赖需手动安装
+6. **`test_server.py` 不依赖框架** — 它与 `custom_channels/qwenpaw_pet.py` 使用相同的协议但互不依赖，测试时注意选择正确的服务器
