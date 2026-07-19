@@ -1,5 +1,7 @@
 {
     "url": "ws://localhost:8765",
     "token": "",
-    "stream": true
+    "streaming": true,
+    "wake_word": "\u4f60\u597d",
+    "silence_timeout": 3
 }

@@ -1,4 +1,4 @@
-"""将config.json中的配置的url,token,是否开启流式加载为变量"""
+"""将 config.json 中的 url、token、streaming、wake_word、silence_timeout 加载为模块级变量。"""
 
 from __future__ import annotations
 
@@ -24,5 +24,11 @@ url: str = _config["url"]
 token: str = _config["token"]
 """Bearer token，用于鉴权。"""
 
-stream: bool = _config.get("stream", True)
+streaming: bool = _config.get("streaming", True)
 """是否开启流式加载（逐 token 推送）。"""
+
+wake_word: str = _config.get("wake_word", "\u4f60\u597d")
+"""唤醒词，如 ``"你好"``。"""
+
+silence_timeout: int = _config.get("silence_timeout", 3)
+"""静音超时秒数，沉默超过此时间后停止录音。"""

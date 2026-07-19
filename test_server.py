@@ -192,12 +192,33 @@ class QwenpawPetTestServer:
         # 提取内容
         content = data.get("content", "") or data.get("text", "")
         if isinstance(content, list):
-            # 多模态消息 — 提取所有文本段
+            # 多模态消息 — 提取文本段和音频信息
             text_parts = []
+            audio_info = None
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     text_parts.append(block.get("text", ""))
-            reply_text = " ".join(text_parts) if text_parts else "(多模态消息)"
+                elif isinstance(block, dict) and block.get("type") == "audio":
+                    raw_data = block.get("data", "")
+                    fmt = block.get("format", "wav")
+                    if raw_data:
+                        try:
+                            import base64
+                            wav_bytes = base64.b64decode(raw_data)
+                            size_kb = len(wav_bytes) / 1024
+                            duration = self._estimate_wav_duration(wav_bytes)
+                            audio_info = f"音频({fmt}, {duration:.1f}秒, {size_kb:.1f}KB)"
+                        except Exception:
+                            audio_info = f"音频({fmt})"
+                    else:
+                        audio_info = f"音频({fmt})"
+
+            reply_parts = []
+            if audio_info:
+                reply_parts.append(audio_info)
+            if text_parts:
+                reply_parts.append(" ".join(text_parts))
+            reply_text = "，".join(reply_parts) if reply_parts else "(空消息)"
         else:
             reply_text = str(content).strip()
 
@@ -256,6 +277,39 @@ class QwenpawPetTestServer:
         """检测客户端是否请求了流式模式。"""
         streaming_val = headers.get("X-Streaming-Enabled", "0")
         return streaming_val.lower() in ("1", "true", "yes")
+
+    @staticmethod
+    def _estimate_wav_duration(wav_bytes: bytes) -> float:
+        """从 WAV 二进制数据中估算音频时长（秒）。"""
+        try:
+            import struct
+            # WAV: RIFF(4) + size(4) + WAVE(4) + chunks...
+            data_size = 0
+            sample_rate = 16000
+            channels = 1
+            bits_per_sample = 16
+            pos = 12  # 跳过 RIFF header
+            while pos + 8 <= len(wav_bytes):
+                chunk_id = wav_bytes[pos:pos+4]
+                chunk_size = struct.unpack('<I', wav_bytes[pos+4:pos+8])[0]
+                if chunk_id == b'fmt ':
+                    fmt_data = wav_bytes[pos+8:pos+8+16]
+                    channels = struct.unpack('<H', fmt_data[2:4])[0]
+                    sample_rate = struct.unpack('<I', fmt_data[4:8])[0]
+                    bits_per_sample = struct.unpack('<H', fmt_data[14:16])[0]
+                elif chunk_id == b'data':
+                    data_size = chunk_size
+                    break
+                pos += 8 + chunk_size
+                if chunk_size % 2:
+                    pos += 1
+            if data_size == 0 or sample_rate == 0:
+                return 0.0
+            bytes_per_frame = channels * (bits_per_sample // 8)
+            total_frames = data_size / bytes_per_frame
+            return total_frames / sample_rate
+        except Exception:
+            return 0.0
 
     @staticmethod
     async def _send_json(websocket, data: dict) -> None:

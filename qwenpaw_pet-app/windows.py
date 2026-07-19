@@ -298,7 +298,7 @@ class SettingController:
     """设置窗口控制器。
 
     提供 ``open_window()`` 方法，打开一个设置窗口，允许用户修改
-    url、token、是否使用流式模式三个值，并保存到 ``config.json``。
+    url、token、streaming、wake_word、silence_timeout，并保存到 ``config.json``。
 
     用法::
 
@@ -313,6 +313,8 @@ class SettingController:
         "url": "ws://localhost:8765",
         "token": "",
         "streaming": True,
+        "wake_word": "\u4f60\u597d",
+        "silence_timeout": 3,
     }
 
     def __init__(
@@ -324,7 +326,7 @@ class SettingController:
 
         Args:
             config_path: config.json 的路径，默认同目录下的 ``config.json``。
-            on_saved: 保存成功后回调，接收 ``(url, token, streaming)`` 三个参数。
+            on_saved: 保存成功后回调，接收 ``(url, token, streaming, wake_word, silence_timeout)``。
         """
         self._config_path = config_path or self._DEFAULT_CONFIG_PATH
         self._on_saved = on_saved
@@ -334,11 +336,13 @@ class SettingController:
         self._url_var: tk.StringVar | None = None
         self._token_var: tk.StringVar | None = None
         self._streaming_var: tk.BooleanVar | None = None
+        self._wake_word_var: tk.StringVar | None = None
+        self._silence_timeout_var: tk.StringVar | None = None
 
     # ── 公共方法 ─────────────────────────────────────────────────────
 
     def open_window(self) -> None:
-        """打开设置窗口，允许修改 url、token、是否使用流式模式。"""
+        """打开设置窗口，允许修改 url、token、streaming、wake_word、silence_timeout。"""
         if self._window is not None:
             self._window.lift()
             return
@@ -347,7 +351,7 @@ class SettingController:
 
         self._window = tk.Toplevel()
         self._window.title("设置")
-        self._window.geometry("350x250")
+        self._window.geometry("350x400")
         self._window.resizable(False, False)
 
         # 居中
@@ -355,7 +359,7 @@ class SettingController:
         screen_w = self._window.winfo_screenwidth()
         screen_h = self._window.winfo_screenheight()
         x = (screen_w - 350) // 2
-        y = (screen_h - 250) // 2
+        y = (screen_h - 400) // 2
         self._window.geometry(f"+{x}+{y}")
 
         # URL 输入
@@ -386,6 +390,24 @@ class SettingController:
             self._window, text="使用流式模式", variable=self._streaming_var,
         ).pack(anchor="w", padx=20, pady=(10, 0))
 
+        # 唤醒词输入
+        tk.Label(self._window, text="唤醒词:", anchor="w").pack(
+            fill="x", padx=20, pady=(10, 0),
+        )
+        self._wake_word_var = tk.StringVar(
+            value=config.get("wake_word", self._DEFAULT_CONFIG["wake_word"]),
+        )
+        tk.Entry(self._window, textvariable=self._wake_word_var).pack(fill="x", padx=20)
+
+        # 静音超时输入
+        tk.Label(self._window, text="静音超时 (秒):", anchor="w").pack(
+            fill="x", padx=20, pady=(10, 0),
+        )
+        self._silence_timeout_var = tk.StringVar(
+            value=str(config.get("silence_timeout", self._DEFAULT_CONFIG["silence_timeout"])),
+        )
+        tk.Entry(self._window, textvariable=self._silence_timeout_var).pack(fill="x", padx=20)
+
         # 按钮区域
         btn_frame = tk.Frame(self._window)
         btn_frame.pack(pady=(20, 0))
@@ -412,11 +434,20 @@ class SettingController:
         except (FileNotFoundError, json.JSONDecodeError):
             return dict(self._DEFAULT_CONFIG)
 
-    def _save_config(self, url: str, token: str, streaming: bool) -> None:
+    def _save_config(
+        self, url: str, token: str, streaming: bool,
+        wake_word: str, silence_timeout: int,
+    ) -> None:
         """将配置写入 config.json。"""
         import json
 
-        config = {"url": url, "token": token, "streaming": streaming}
+        config = {
+            "url": url,
+            "token": token,
+            "streaming": streaming,
+            "wake_word": wake_word,
+            "silence_timeout": silence_timeout,
+        }
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
@@ -425,11 +456,16 @@ class SettingController:
         url = self._url_var.get().strip() if self._url_var else ""
         token = self._token_var.get() if self._token_var else ""
         streaming = self._streaming_var.get() if self._streaming_var else True
+        wake_word = self._wake_word_var.get().strip() if self._wake_word_var else ""
+        try:
+            silence_timeout = int(self._silence_timeout_var.get().strip()) if self._silence_timeout_var else 3
+        except ValueError:
+            silence_timeout = 3
 
-        self._save_config(url, token, streaming)
+        self._save_config(url, token, streaming, wake_word, silence_timeout)
 
         if self._on_saved:
-            self._on_saved(url, token, streaming)
+            self._on_saved(url, token, streaming, wake_word, silence_timeout)
 
         self._close_window()
 

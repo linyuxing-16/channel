@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import threading
 
-from config import token, url
+from config import silence_timeout, token, url, wake_word
+from voice_controller import VoiceController
 from websocket_pet import QwenpawPetClient
 
 # 创建一个队列，用于存储从 WebSocket 接收到的消息
@@ -29,10 +30,55 @@ dialog_controller = windows.DialogController()
 
 # 使用 DialogController 实例来初始化 PetWindow
 pet_window = windows.PetWindow(dialog_controller)
-setting_controller = windows.SettingController()
+
+# 语音控制器（稍后在事件循环就绪后启动）
+voice_controller: VoiceController | None = None
+
+# ── 事件循环引用（在 __main__ 中赋值） ────────────────────────────────
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _send_audio(base64_str: str) -> None:
+    """异步发送 base64 编码的音频到 WebSocket。"""
+    global _loop
+    if _loop is None:
+        return
+    audio_payload = [{"type": "audio", "data": base64_str, "format": "wav"}]
+    asyncio.run_coroutine_threadsafe(
+        client.send_message(audio_payload), _loop,
+    )
+
+
+def _on_voice_state(state: str) -> None:
+    """在 tkinter 主线程中切换宠物状态图片。"""
+    pet_window.root.after(0, pet_window.switch_image, state)
+
+
+def _on_setting_saved(
+    url_val: str, token_val: str, streaming_val: bool,
+    wake_word_val: str, silence_timeout_val: int,
+) -> None:
+    """设置保存后的回调：更新语音控制器配置。"""
+    if voice_controller is not None:
+        voice_controller.update_config(
+            wake_word=wake_word_val,
+            silence_timeout=silence_timeout_val,
+        )
+
+
+# 创建设置控制器，传入保存回调
+setting_controller = windows.SettingController(on_saved=_on_setting_saved)
 dialog_controller.set_on_setting(setting_controller.open_window)
 
-dialog_controller.set_on_exit(pet_window.close_window)
+
+def _on_exit() -> None:
+    """退出时停止语音控制器并关闭窗口。"""
+    if voice_controller is not None:
+        voice_controller.stop()
+    pet_window.close_window()
+
+
+dialog_controller.set_on_exit(_on_exit)
 
 # 定义一个异步发送函数，通过 client.send_message 实现消息发送
 async def send_message(text: str) -> None:
@@ -86,15 +132,24 @@ def _display_incoming_message(content: str) -> None:
 
 if __name__ == "__main__":
     # 创建新的事件循环并在守护线程中运行
-    loop = asyncio.new_event_loop()
-    threading.Thread(target=loop.run_forever, daemon=True).start()
+    _loop = asyncio.new_event_loop()
+    threading.Thread(target=_loop.run_forever, daemon=True).start()
+
+    # 创建语音控制器（事件循环就绪后）
+    voice_controller = VoiceController(
+        wake_word=wake_word,
+        silence_timeout=silence_timeout,
+        on_audio_ready=_send_audio,
+        on_state_change=_on_voice_state,
+    )
+    voice_controller.start()
 
     # 调度 connect 和 consume_messages 协程
-    asyncio.run_coroutine_threadsafe(client.connect(), loop)
-    asyncio.run_coroutine_threadsafe(consume_messages(), loop)
+    asyncio.run_coroutine_threadsafe(client.connect(), _loop)
+    asyncio.run_coroutine_threadsafe(consume_messages(), _loop)
 
     # 启动 tkinter 主循环（主线程阻塞）
     pet_window.show_main_window()
 
     # 窗口关闭后清理
-    loop.call_soon_threadsafe(loop.stop)
+    _loop.call_soon_threadsafe(_loop.stop)
