@@ -3,5 +3,6 @@
     "token": "",
     "streaming": true,
     "wake_word": "\u4f60\u597d",
-    "silence_timeout": 3
+    "silence_timeout": 3,
+    "voice_enabled": true
 }

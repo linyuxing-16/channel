@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 
-from config import silence_timeout, token, url, wake_word
+from config import silence_timeout, token, url, voice_enabled, wake_word
 from voice_controller import VoiceController
 from websocket_pet import QwenpawPetClient
+
+logger = logging.getLogger(__name__)
 
 # 创建一个队列，用于存储从 WebSocket 接收到的消息
 message_queue: asyncio.Queue[tuple[str, bool]] = asyncio.Queue()
@@ -57,13 +60,31 @@ def _on_voice_state(state: str) -> None:
 def _on_setting_saved(
     url_val: str, token_val: str, streaming_val: bool,
     wake_word_val: str, silence_timeout_val: int,
+    voice_enabled_val: bool,
 ) -> None:
     """设置保存后的回调：更新语音控制器配置。"""
-    if voice_controller is not None:
-        voice_controller.update_config(
-            wake_word=wake_word_val,
-            silence_timeout=silence_timeout_val,
-        )
+    global voice_controller
+    if voice_enabled_val:
+        if voice_controller is None:
+            voice_controller = VoiceController(
+                wake_word=wake_word_val,
+                silence_timeout=silence_timeout_val,
+                on_audio_ready=_send_audio,
+                on_state_change=_on_voice_state,
+            )
+            voice_controller.start()
+        else:
+            voice_controller.update_config(
+                wake_word=wake_word_val,
+                silence_timeout=silence_timeout_val,
+            )
+            voice_controller.start()
+        logger.info("Voice wake-up enabled")
+    else:
+        if voice_controller is not None:
+            voice_controller.stop()
+            voice_controller = None
+            logger.info("Voice wake-up disabled")
 
 
 # 创建设置控制器，传入保存回调
@@ -135,14 +156,19 @@ if __name__ == "__main__":
     _loop = asyncio.new_event_loop()
     threading.Thread(target=_loop.run_forever, daemon=True).start()
 
-    # 创建语音控制器（事件循环就绪后）
-    voice_controller = VoiceController(
-        wake_word=wake_word,
-        silence_timeout=silence_timeout,
-        on_audio_ready=_send_audio,
-        on_state_change=_on_voice_state,
-    )
-    voice_controller.start()
+    # 创建语音控制器（仅当启用时）
+    if voice_enabled:
+        voice_controller = VoiceController(
+            wake_word=wake_word,
+            silence_timeout=silence_timeout,
+            on_audio_ready=_send_audio,
+            on_state_change=_on_voice_state,
+        )
+        voice_controller.start()
+        logger.info("Voice wake-up enabled (config)")
+    else:
+        voice_controller = None
+        logger.info("Voice wake-up disabled (config)")
 
     # 调度 connect 和 consume_messages 协程
     asyncio.run_coroutine_threadsafe(client.connect(), _loop)

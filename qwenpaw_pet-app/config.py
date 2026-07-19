@@ -32,3 +32,6 @@ wake_word: str = _config.get("wake_word", "\u4f60\u597d")
 
 silence_timeout: int = _config.get("silence_timeout", 3)
 """静音超时秒数，沉默超过此时间后停止录音。"""
+
+voice_enabled: bool = _config.get("voice_enabled", True)
+"""是否启用语音唤醒功能。"""

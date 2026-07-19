@@ -315,6 +315,7 @@ class SettingController:
         "streaming": True,
         "wake_word": "\u4f60\u597d",
         "silence_timeout": 3,
+        "voice_enabled": True,
     }
 
     def __init__(
@@ -326,7 +327,7 @@ class SettingController:
 
         Args:
             config_path: config.json 的路径，默认同目录下的 ``config.json``。
-            on_saved: 保存成功后回调，接收 ``(url, token, streaming, wake_word, silence_timeout)``。
+            on_saved: 保存成功后回调，接收 ``(url, token, streaming, wake_word, silence_timeout, voice_enabled)``。
         """
         self._config_path = config_path or self._DEFAULT_CONFIG_PATH
         self._on_saved = on_saved
@@ -338,6 +339,7 @@ class SettingController:
         self._streaming_var: tk.BooleanVar | None = None
         self._wake_word_var: tk.StringVar | None = None
         self._silence_timeout_var: tk.StringVar | None = None
+        self._voice_enabled_var: tk.BooleanVar | None = None
 
     # ── 公共方法 ─────────────────────────────────────────────────────
 
@@ -351,7 +353,7 @@ class SettingController:
 
         self._window = tk.Toplevel()
         self._window.title("设置")
-        self._window.geometry("350x400")
+        self._window.geometry("350x440")
         self._window.resizable(False, False)
 
         # 居中
@@ -359,7 +361,7 @@ class SettingController:
         screen_w = self._window.winfo_screenwidth()
         screen_h = self._window.winfo_screenheight()
         x = (screen_w - 350) // 2
-        y = (screen_h - 400) // 2
+        y = (screen_h - 440) // 2
         self._window.geometry(f"+{x}+{y}")
 
         # URL 输入
@@ -408,6 +410,14 @@ class SettingController:
         )
         tk.Entry(self._window, textvariable=self._silence_timeout_var).pack(fill="x", padx=20)
 
+        # 语音唤醒开关
+        self._voice_enabled_var = tk.BooleanVar(
+            value=config.get("voice_enabled", self._DEFAULT_CONFIG["voice_enabled"]),
+        )
+        tk.Checkbutton(
+            self._window, text="启用语音唤醒", variable=self._voice_enabled_var,
+        ).pack(anchor="w", padx=20, pady=(10, 0))
+
         # 按钮区域
         btn_frame = tk.Frame(self._window)
         btn_frame.pack(pady=(20, 0))
@@ -436,7 +446,7 @@ class SettingController:
 
     def _save_config(
         self, url: str, token: str, streaming: bool,
-        wake_word: str, silence_timeout: int,
+        wake_word: str, silence_timeout: int, voice_enabled: bool,
     ) -> None:
         """将配置写入 config.json。"""
         import json
@@ -447,6 +457,7 @@ class SettingController:
             "streaming": streaming,
             "wake_word": wake_word,
             "silence_timeout": silence_timeout,
+            "voice_enabled": voice_enabled,
         }
         with open(self._config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -461,11 +472,12 @@ class SettingController:
             silence_timeout = int(self._silence_timeout_var.get().strip()) if self._silence_timeout_var else 3
         except ValueError:
             silence_timeout = 3
+        voice_enabled = self._voice_enabled_var.get() if self._voice_enabled_var else True
 
-        self._save_config(url, token, streaming, wake_word, silence_timeout)
+        self._save_config(url, token, streaming, wake_word, silence_timeout, voice_enabled)
 
         if self._on_saved:
-            self._on_saved(url, token, streaming, wake_word, silence_timeout)
+            self._on_saved(url, token, streaming, wake_word, silence_timeout, voice_enabled)
 
         self._close_window()
 
