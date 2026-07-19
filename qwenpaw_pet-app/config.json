@@ -1,8 +1,8 @@
 {
-    "url": "ws://localhost:8765",
-    "token": "",
-    "streaming": true,
-    "wake_word": "\u4f60\u597d",
-    "silence_timeout": 3,
-    "voice_enabled": true
+  "url": "ws://localhost:8765",
+  "token": "",
+  "streaming": true,
+  "wake_word": "你好",
+  "silence_timeout": 3,
+  "voice_enabled": false
 }
