@@ -31,8 +31,6 @@ import sherpa_onnx
 logger = logging.getLogger(__name__)
 
 # ── 默认模型常量 ──────────────────────────────────────────────────────
-# 注意：用户原本倾向 1.1M 模型，但 sherpa-onnx kws-models 发布页中
-# 不存在该版本，因此采用 3.3M mobile 模型（轻量 int8 量化版）。
 
 _MODEL_NAME = "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01-mobile"
 _MODEL_URL = (
