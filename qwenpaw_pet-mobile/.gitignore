@@ -1,6 +1,0 @@
-node_modules/
-dist/
-android/
-ios/
-*.local
-.DS_Store
